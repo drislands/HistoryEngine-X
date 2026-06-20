@@ -4,7 +4,6 @@ import HistoryEngine.Logic
 import HistoryEngine.Types
 import Data.Maybe (catMaybes)
 import Control.Monad.State
-import Control.Monad (forM)
 import System.Random (StdGen, randomR)
 
 
@@ -26,15 +25,15 @@ advancePopulation pop = do
     -- Update the population with the survivors
     return pop { people = survivingPeople ++ newBabies }
 
-rollForDeath :: Double -> [Person] -> SimMonad [Person]
+rollForDeath :: Ratio  -> [Person] -> SimMonad [Person]
 rollForDeath rate = filterM checkSurvival
     where
         checkSurvival :: Person -> SimMonad Bool
-        checkSurvival person = do
+        checkSurvival _ = do
             roll <- rollDoubleRange (0.0, 1.0)
             return (roll < rate)
 
-generateOffspring :: Double -> [Person] -> SimMonad [Person]
+generateOffspring :: Ratio  -> [Person] -> SimMonad [Person]
 generateOffspring birthRate pool = do
     let females = [p | p <- pool, sex p == Female]
         males   = [p | p <- pool, sex p == Male]
@@ -54,7 +53,7 @@ generateOffspring birthRate pool = do
                         spec   <- calculateSpecialness
                         return $ Just Person
                             { personId = newId
-                            , name = "whatever"
+                            , personName = "whatever"
                             , age  = 0
                             , sex  = newSex
                             , parentIds = [personId dad,personId mom]

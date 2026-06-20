@@ -37,13 +37,13 @@ areUnrelated id1 id2 pool =
     in Set.null (Set.intersection tree1 tree2)
 
 -- Population functions
-currentMortalityRate :: Population -> Double
+currentMortalityRate :: Population -> Ratio 
 currentMortalityRate pop =
     let base = baseMortalityRate pop
         mods = sum [ mortalityMod d | d <- discoveries pop ]
     in  max 0.0 (base + mods) -- ensure mortality never goes below 0%
 
-currentBirthRate :: Population -> Double
+currentBirthRate :: Population -> Ratio 
 currentBirthRate pop =
     let base = baseBirthRate pop
         mods = sum [ birthRateMod d | d <- discoveries pop ]
