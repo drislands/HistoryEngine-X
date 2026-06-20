@@ -1,10 +1,23 @@
+{- cabal:
+build-depends: base, random
+-}
+
 import Data.List (find)
 import qualified Data.Set as Set
+import Control.Monad.State
+import System.Random (StdGen, randomR)
 
 type PersonId = Int
 type Year     = Int
 
+type SimState = (StdGen, PersonId)
+
+type SimMonad a = State SimState a
+
 data Sex = Male | Female
+    deriving (Show, Eq, Enum, Bounded)
+
+data AgeGroup = Child | Youth | Adult | Elder
     deriving (Show, Eq, Enum, Bounded)
 
 data DiscoveryType = Technology | Magic | Culture
@@ -42,11 +55,18 @@ data World = World
 
 
 -- Person functions
+ageGroup :: Person -> AgeGroup
+ageGroup Person { age=a }
+    | a < 6 = Child
+    | a < 18 = Youth
+    | a < 50 = Adult
+    | otherwise = Elder
+
 agePerson :: Person -> Person
 agePerson p = p { age = age p + 1 }
 
 canReproduce :: Person -> Bool
-canReproduce p = age p >= 18 && age p <= 50
+canReproduce p = eq (ageGroup p) Adult
 
 findPerson :: PersonId -> [Person] -> Maybe Person
 findPerson pid = find (\p -> personId p == pid) 
@@ -73,4 +93,25 @@ currentMortalityRate pop =
         mods = sum [ mortalityMod d | d <- discoveries pop ]
     in  max 0.0 (base + mods) -- ensure mortality never goes below 0%
 
+-- advancePopulation :: Population -> SimMonad Population
+-- advancePopulation pop = do
+--     -- Age em up
+--     let agedPeople = map (\p -> p { age = age p + 1 }) (people pop)
 
+--     -- TODO: filter for survivors
+
+
+-- Stateful stuff
+
+freshId :: SimMonad PersonId
+freshId = do
+    (gen, nextId) <- get
+    put (gen, nextId + 1)
+    return nextId
+
+rollRange :: (Double, Double) -> SimMonad Double
+rollRange (low, high) = do
+    (gen, nextId) <- get
+    let (val, nextGen) = randomR (low, high) gen
+    put (nextGen, nextId)
+    return val
