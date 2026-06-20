@@ -1,6 +1,7 @@
 module HistoryEngine.Simulation where
 
 import HistoryEngine.Logic
+import HistoryEngine.Types
 import Data.Maybe (catMaybes)
 import Control.Monad.State
 import Control.Monad (forM)
