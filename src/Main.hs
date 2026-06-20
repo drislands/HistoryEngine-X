@@ -3,8 +3,10 @@ build-depends: base, random
 -}
 
 import Data.List (find)
+import Data.Maybe (catMaybes)
 import qualified Data.Set as Set
 import Control.Monad.State
+import Control.Monad (forM)
 import System.Random (StdGen, randomR)
 
 type PersonId = Int
@@ -66,10 +68,10 @@ agePerson :: Person -> Person
 agePerson p = p { age = age p + 1 }
 
 canReproduce :: Person -> Bool
-canReproduce p = eq (ageGroup p) Adult
+canReproduce p = ageGroup p == Adult
 
 findPerson :: PersonId -> [Person] -> Maybe Person
-findPerson pid = find (\p -> personId p == pid) 
+findPerson pid = find (\p -> personId p == pid)
 
 getAncestors :: Int -> PersonId -> [Person] -> Set.Set PersonId
 getAncestors depth pid pool
@@ -81,7 +83,7 @@ getAncestors depth pid pool
             in Set.insert pid (Set.unions parentTrees)
 
 areUnrelated :: PersonId -> PersonId -> [Person] -> Bool
-areUnrelated id1 id2 pool = 
+areUnrelated id1 id2 pool =
     let tree1 = getAncestors 2 id1 pool -- self, parents, grandparents
         tree2 = getAncestors 2 id2 pool
     in Set.null (Set.intersection tree1 tree2)
@@ -93,15 +95,70 @@ currentMortalityRate pop =
         mods = sum [ mortalityMod d | d <- discoveries pop ]
     in  max 0.0 (base + mods) -- ensure mortality never goes below 0%
 
--- advancePopulation :: Population -> SimMonad Population
--- advancePopulation pop = do
---     -- Age em up
---     let agedPeople = map (\p -> p { age = age p + 1 }) (people pop)
+currentBirthRate :: Population -> Double
+currentBirthRate pop =
+    let base = baseBirthRate pop
+        mods = sum [ birthRateMod d | d <- discoveries pop ]
+    in  max 0.0 (base + mods)
 
---     -- TODO: filter for survivors
+advancePopulation :: Population -> SimMonad Population
+advancePopulation pop = do
+    -- Age em up
+    let agedPeople = map (\p -> p { age = age p + 1 }) (people pop)
 
+    -- Who dies?
+    survivingPeople <- rollForDeath (currentMortalityRate pop) agedPeople
 
--- Stateful stuff
+    -- Who is born?
+    newBabies <- generateOffspring (currentBirthRate pop) survivingPeople
+
+    -- Update the population with the survivors
+    return pop { people = survivingPeople ++ newBabies }
+
+rollForDeath :: Double -> [Person] -> SimMonad [Person]
+rollForDeath rate = filterM checkSurvival
+    where
+        checkSurvival :: Person -> SimMonad Bool
+        checkSurvival person = do
+            roll <- rollDoubleRange (0.0, 1.0)
+            return (roll < rate)
+
+generateOffspring :: Double -> [Person] -> SimMonad [Person]
+generateOffspring birthRate pool = do
+    let females = [p | p <- pool, sex p == Female]
+        males   = [p | p <- pool, sex p == Male]
+    maybeBabies <- forM females $ \mom -> do
+        -- Filter out the male pool to individuals unrelated to this female
+        let validDads = filter (\m -> areUnrelated (personId mom) (personId m) pool) males
+        if null validDads
+            then return Nothing
+            else do
+                birthRoll <- rollDoubleRange (0.0, 1.0)
+                if birthRoll > birthRate
+                    then return Nothing
+                    else do
+                        dad    <- rollListSelection validDads
+                        newId  <- freshId
+                        newSex <- rollSex
+                        spec   <- calculateSpecialness
+                        return $ Just Person
+                            { personId = newId
+                            , name = "whatever"
+                            , age  = 0
+                            , sex  = newSex
+                            , parentIds = [personId dad,personId mom]
+                            , specialness = spec
+                            }
+
+    -- Flatten the [Maybe Person] down to [Person]
+    return (catMaybes maybeBabies)
+
+calculateSpecialness :: SimMonad Int
+calculateSpecialness = do
+    -- TODO: actual specialness logic
+    return 0
+
+-- Stateful helpers
 
 freshId :: SimMonad PersonId
 freshId = do
@@ -109,9 +166,27 @@ freshId = do
     put (gen, nextId + 1)
     return nextId
 
-rollRange :: (Double, Double) -> SimMonad Double
-rollRange (low, high) = do
+rollDoubleRange :: (Double, Double) -> SimMonad Double
+rollDoubleRange (low, high) = do
     (gen, nextId) <- get
     let (val, nextGen) = randomR (low, high) gen
     put (nextGen, nextId)
     return val
+
+rollIntRange :: (Int, Int) -> SimMonad Int
+rollIntRange (low, high) = do
+    (gen, nextId) <- get
+    let (val, nextGen) = randomR (low, high) gen
+    put (nextGen, nextId)
+    return val
+
+rollListSelection :: [a] -> SimMonad a
+rollListSelection xs = do
+    let size = length xs
+    index <- rollIntRange (0,size-1)
+    return $ xs !! index
+
+rollSex :: SimMonad Sex
+rollSex = do
+    roll <- rollDoubleRange (0.0,1.0)
+    return (if roll < 0.5 then Male else Female)
