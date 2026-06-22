@@ -60,7 +60,8 @@ replLoop rState = do
                 mRatio    = read mrStr :: Ratio
 
                 -- Pass the state in, carry it back out
-                (newPop, nextState) = generateInitialPopulation name headcount sRatio bRatio mRatio (activeSimState rState)
+                simAction = generateInitialPopulation name headcount sRatio bRatio mRatio
+                (newPop, nextState) = runState simAction (activeSimState rState)
             putStrLn $ "Created population '" ++ name ++ "' with " ++ hcStr ++ " founders."
 
             -- Population created, start the loop again with this as the single pop
@@ -141,43 +142,38 @@ putLine :: IO ()
 putLine = put20 '-'
 
 -- Population Manipulation
-generateInitialPopulation :: String -> Int -> Ratio -> Ratio -> Ratio -> SimState -> (Population, SimState)
-generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio initialState = 
+generateInitialPopulation :: String -> Int -> Ratio -> Ratio -> Ratio -> SimMonad Population
+generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
     -- Set gender populations
     let maleCount = round (fromIntegral popCount * sexRatio)
         femaleCount = popCount - maleCount
     
     -- Build the action that creates the actual people
-        generationAction = do
-            males <- replicateM maleCount (createStartingPerson Male)
-            females <- replicateM femaleCount (createStartingPerson Female)
-            return (males ++ females)
+    males <- replicateM maleCount (createStartingPerson Male)
+    females <- replicateM femaleCount (createStartingPerson Female)
     
-    -- Run that action to make the population
-        (startingPeople, nextState) = runState generationAction initialState
 
-        pop = Population
-            { popName            = name
-            , baseBirthRate      = birthRatio
-            , baseMortalityRate  = mortalityRatio
-            , people             = startingPeople
-            , discoveries        = []
-            }
-    in (pop, nextState)
-        where
-            createStartingPerson :: Sex -> SimMonad Person
-            createStartingPerson personSex = do
-                pId <- freshId
-                -- TODO: age range ratios, too. For now we're just doing Adults
-                startingAge <- rollIntRange (18, 49)
-                return Person
-                    { personId    = pId
-                    , personName  = "Founder " ++ show pId
-                    , age         = startingAge
-                    , sex         = personSex
-                    , parentIds   = []
-                    , specialness = 0
-                    }
+    return Population
+        { popName            = name
+        , baseBirthRate      = birthRatio
+        , baseMortalityRate  = mortalityRatio
+        , people             = males ++ females
+        , discoveries        = []
+        }
+    where
+        createStartingPerson :: Sex -> SimMonad Person
+        createStartingPerson personSex = do
+            pId <- freshId
+            -- TODO: age range ratios, too. For now we're just doing Adults
+            startingAge <- rollIntRange (18, 49)
+            return Person
+                { personId    = pId
+                , personName  = "Founder " ++ show pId
+                , age         = startingAge
+                , sex         = personSex
+                , parentIds   = []
+                , specialness = 0
+                }
 
 runMultipleYears :: Int -> Population -> SimMonad Population
 runMultipleYears 0 pop = return pop
