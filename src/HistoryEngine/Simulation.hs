@@ -35,8 +35,8 @@ rollForDeath rate = filterM checkSurvival
 
 generateOffspring :: Ratio  -> [Person] -> SimMonad [Person]
 generateOffspring birthRate pool = do
-    let females = [p | p <- pool, sex p == Female]
-        males   = [p | p <- pool, sex p == Male]
+    let females = [p | p <- pool, sex p == Female && canReproduce p]
+        males   = [p | p <- pool, sex p == Male && canReproduce p]
     maybeBabies <- forM females $ \mom -> do
         -- Filter out the male pool to individuals unrelated to this female
         let validDads = filter (\m -> areUnrelated (personId mom) (personId m) pool) males
