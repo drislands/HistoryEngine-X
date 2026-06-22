@@ -10,7 +10,21 @@ import Control.Monad.State
 
 main :: IO ()
 main = do
-    return ()
+    putStrLn "== Initializing Test Population =="
+
+    -- 40 people, even gender split, 25% chance of birth, 10% chance of death
+    testPop <- generateInitialPopulation "The Founders" 40 0.5 0.25 0.10
+
+    printPopulationReport "Year 0" testPop
+
+    putStrLn "\n== Advancing =="
+
+    loopGen <- newStdGen
+    let simState = (loopGen, 1000)
+
+    let (advPop,_) = runState (advancePopulation testPop) simState
+
+    printPopulationReport "Year 1" advPop
 
 generateInitialPopulation :: String -> Int -> Ratio -> Ratio -> Ratio -> IO Population
 generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
@@ -60,11 +74,17 @@ generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
 printPopulationReport :: String -> Population -> IO ()
 printPopulationReport label pop = do
     let ages = [minBound .. maxBound] :: [AgeGroup]
-        ageCounts = map (\ag -> (ag, [p | p <- people pop, ageGroup p == ag])) ages
+        sexes = [minBound .. maxBound] :: [Sex]
+        ageCounts = map (\ag -> (ag, length [p | p <- people pop, ageGroup p == ag])) ages
+        sexCounts = map (\thisSex -> (thisSex, length [p | p <- people pop, sex p == thisSex])) sexes
 
 
     putStrLn "==================="
     putStrLn $ label ++ " " ++ popName pop
     putStrLn "-------------------"
-    mapM_ (\(ag, count) -> putStrLn $ show ag ++ " | " ++ show count) ageCounts
+    putStrLn $ "Total Population: " ++ show ( length $ people pop)
+    putStrLn "-------------------"
+    mapM_ (\(ag, count) -> putStrLn $ " - " ++ show ag ++ " | " ++ show count) ageCounts
+    putStrLn "-------------------"
+    mapM_ (\(thisSex, count) -> putStrLn $ " - " ++ show thisSex ++ " | " ++ show count) sexCounts
     putStrLn "==================="
