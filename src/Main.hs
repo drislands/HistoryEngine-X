@@ -84,7 +84,7 @@ replLoop rState = do
                 Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
                 Just pop -> do
                     let steps = read yearsStr :: Int
-                    if steps < 0 then putStrLn "Error: cannot go back in time"
+                    if steps < 0 then putStrLn "Error: cannot go back in time" >> replLoop rState
                     else do
                         putStrLn $ "Advancing simulation by " ++ yearsStr ++ " years..."
 
@@ -93,6 +93,12 @@ replLoop rState = do
                         
                         printPopulationReport ("After " ++ yearsStr ++ " Years") finalPop
                         replLoop rState { activePopulation = Just finalPop, activeSimState = finalState }
+        "list" : _ -> do
+            case activePopulation rState of
+                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
+                Just pop -> do
+                    putStrLn $ "Here are all person IDs: " ++ show (people pop)
+                    replLoop rState
         "examine" : pIdStr : _ -> do
             case activePopulation rState of
                 Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
@@ -101,7 +107,7 @@ replLoop rState = do
                         person = findPerson pId (people pop)
                     
                     case person of
-                        Nothing -> putStrLn ("Person with ID " ++ pIdStr ++ " does not exist!") >> replLoop rState
+                        Nothing -> putStrLn ("Person with ID " ++ pIdStr ++ " does not exist!")
                         Just p -> do
                             let parents = mapMaybe (\parId -> findPerson parId (people pop)) (parentIds p)
                             putBar
