@@ -31,7 +31,7 @@ rollForDeath rate = filterM checkSurvival
         checkSurvival :: Person -> SimMonad Bool
         checkSurvival _ = do
             roll <- rollDoubleRange (0.0, 1.0)
-            return (roll < rate)
+            return (roll > rate)
 
 generateOffspring :: Ratio  -> [Person] -> SimMonad [Person]
 generateOffspring birthRate pool = do
