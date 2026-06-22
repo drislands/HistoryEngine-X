@@ -43,10 +43,15 @@ replLoop rState = do
     case commandTokens of
         [] -> replLoop rState
         ["exit"] -> putStrLn "Exiting."
-        "help" : rest -> do
-            case rest of
+        "help" : hRest -> do
+            case hRest of
                 [] -> help
                 "create" : _ -> putStrLn "create <name> <headcount> <sex ratio> <birth ratio> <mortality ratio>"
+                "update" : uRest -> do
+                    case uRest of
+                        [] -> putStrLn "Update one of: birth"
+                        "birth" : _ -> putStrLn "update birth <new ratio>"
+                        x : _ -> putStrLn $ "Unknown update argument `" ++ x ++ "`."
                 x : _ -> putStrLn $ "Unknown command `" ++ x ++ "`."
             replLoop rState
         "create" : name : hcStr : sxStr : brStr : mrStr : _ -> do
@@ -60,6 +65,13 @@ replLoop rState = do
 
             -- Population created, start the loop again with this as the single pop
             replLoop rState { activePopulation = Just newPop }
+        "update" : "birth" : bStr : _ -> do
+            case activePopulation rState of
+                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
+                Just pop -> do
+                    let newPop  = pop { baseBirthRate = read bStr }
+                    putStrLn "Updated base birth rate."
+                    replLoop rState { activePopulation = Just newPop }
         
         _ -> do
             putStrLn "Unknown command or invalid arguments."
@@ -68,7 +80,7 @@ replLoop rState = do
 
 -- Just a basic help message.
 help :: IO ()
-help = putStrLn "Available commands: help, create"
+help = putStrLn "Available commands: help, create, update birth"
 
 generateInitialPopulation :: String -> Int -> Ratio -> Ratio -> Ratio -> IO Population
 generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
