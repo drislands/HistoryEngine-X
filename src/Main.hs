@@ -72,6 +72,13 @@ replLoop rState = do
                     let newPop  = pop { baseBirthRate = read bStr }
                     putStrLn "Updated base birth rate."
                     replLoop rState { activePopulation = Just newPop }
+        "update" : "mortality" : mStr : _ -> do
+            case activePopulation rState of
+                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
+                Just pop -> do
+                    let newPop  = pop { baseMortalityRate = read mStr }
+                    putStrLn "Updated base mortality rate."
+                    replLoop rState { activePopulation = Just newPop }
         
         _ -> do
             putStrLn "Unknown command or invalid arguments."
