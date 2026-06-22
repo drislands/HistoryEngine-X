@@ -12,21 +12,16 @@ import Data.Maybe (mapMaybe)
 
 main :: IO ()
 main = do
-    putStrLn "== Initializing Test Population =="
+    putBar
+    putStrLn "History Engine REPL - Alpha"
+    putBar
 
-    -- 40 people, even gender split, 25% chance of birth, 10% chance of death
-    testPop <- generateInitialPopulation "The Founders" 40 0.5 0.25 0.10
-
-    printPopulationReport "Year 0" testPop
-
-    putStrLn "\n== Advancing =="
-
-    loopGen <- newStdGen
-    let simState = (loopGen, 1000)
-
-    let (advPop,_) = runState (advancePopulation testPop) simState
-
-    printPopulationReport "Year 1" advPop
+    -- Initialize random generator
+    systemGen <- newStdGen
+    let initialState = (systemGen, 1)
+        initialRepl  = ReplState { activePopulation = Nothing, activeSimState = initialState }
+    
+    replLoop initialRepl
 
 -- REPL logic
 data ReplState = ReplState
@@ -65,7 +60,7 @@ replLoop rState = do
                 mRatio    = read mrStr :: Ratio
 
             newPop <- generateInitialPopulation name headcount sRatio bRatio mRatio
-            putStr $ "Created population '" ++ name ++ "' with " ++ hcStr ++ " founders."
+            putStrLn $ "Created population '" ++ name ++ "' with " ++ hcStr ++ " founders."
 
             -- Population created, start the loop again with this as the single pop
             replLoop rState { activePopulation = Just newPop }
@@ -203,7 +198,7 @@ printPopulationReport label pop = do
     putLine
     putStrLn $ "Total Population: " ++ show ( length $ people pop)
     putLine
-    mapM_ (\(ag, count) -> putStrLn $ " - " ++ show ag ++ " | " ++ show count) ageCounts
+    mapM_ (\(ag, count) -> putStrLn $ " - " ++ show ag ++ "  | " ++ show count) ageCounts
     putLine
     mapM_ (\(thisSex, count) -> putStrLn $ " - " ++ show thisSex ++ " | " ++ show count) sexCounts
     putBar
