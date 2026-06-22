@@ -6,6 +6,7 @@ import HistoryEngine.Simulation
 
 import System.Random (newStdGen)
 import Control.Monad.State
+import System.IO (hFlush, stdout)
 
 
 main :: IO ()
@@ -25,6 +26,49 @@ main = do
     let (advPop,_) = runState (advancePopulation testPop) simState
 
     printPopulationReport "Year 1" advPop
+
+-- REPL logic
+data ReplState = ReplState
+    { activePopulation :: Maybe Population
+    , activeSimState   :: SimState
+    }
+
+replLoop :: ReplState -> IO ()
+replLoop rState = do
+    putStr "he-x> "
+    hFlush stdout -- forces prompt to display immediately
+    input <- getLine
+
+    let commandTokens = words input
+    case commandTokens of
+        [] -> replLoop rState
+        ["exit"] -> putStrLn "Exiting."
+        "help" : rest -> do
+            case rest of
+                [] -> help
+                "create" : _ -> putStrLn "create <name> <headcount> <sex ratio> <birth ratio> <mortality ratio>"
+                x : _ -> putStrLn $ "Unknown command `" ++ x ++ "`."
+            replLoop rState
+        "create" : name : hcStr : sxStr : brStr : mrStr : _ -> do
+            let headcount = read hcStr :: Int
+                sRatio    = read sxStr :: Ratio
+                bRatio    = read brStr :: Ratio
+                mRatio    = read mrStr :: Ratio
+
+            newPop <- generateInitialPopulation name headcount sRatio bRatio mRatio
+            putStr $ "Created population '" ++ name ++ "' with " ++ hcStr ++ " founders."
+
+            -- Population created, start the loop again with this as the single pop
+            replLoop rState { activePopulation = Just newPop }
+        
+        _ -> do
+            putStrLn "Unknown command or invalid arguments."
+            help
+            replLoop rState
+
+-- Just a basic help message.
+help :: IO ()
+help = putStrLn "Available commands: help, create"
 
 generateInitialPopulation :: String -> Int -> Ratio -> Ratio -> Ratio -> IO Population
 generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
