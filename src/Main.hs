@@ -7,6 +7,7 @@ import HistoryEngine.Simulation
 import System.Random (newStdGen)
 import Control.Monad.State
 import System.IO (hFlush, stdout)
+import Data.Maybe (mapMaybe)
 
 
 main :: IO ()
@@ -54,6 +55,7 @@ replLoop rState = do
                         "mortality" : _ -> putStrLn "update mortality <new ratio>"
                         x : _ -> putStrLn $ "Unknown update argument `" ++ x ++ "`."
                 "advance" : _ -> putStrLn "advance <years>"
+                "examine" : _ -> putStrLn "examine <person ID>"
                 x : _ -> putStrLn $ "Unknown command `" ++ x ++ "`."
             replLoop rState
         "create" : name : hcStr : sxStr : brStr : mrStr : _ -> do
@@ -96,8 +98,27 @@ replLoop rState = do
                         
                         printPopulationReport ("After " ++ yearsStr ++ " Years") finalPop
                         replLoop rState { activePopulation = Just finalPop, activeSimState = finalState }
+        "examine" : pIdStr : _ -> do
+            case activePopulation rState of
+                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
+                Just pop -> do
+                    let pId = read pIdStr :: Int
+                        person = findPerson pId (people pop)
+                    
+                    case person of
+                        Nothing -> putStrLn ("Person with ID " ++ pIdStr ++ " does not exist!") >> replLoop rState
+                        Just p -> do
+                            let parents = mapMaybe (\parId -> findPerson parId (people pop)) (parentIds p)
+                            putBar
+                            putStrLn $ personName p
+                            putLine
+                            putStrLn $ "Sex: " ++ show (sex p)
+                            putStrLn $ "Age: " ++ show (age p)
+                            putStrLn $ "Parents: " ++ concatMap (\parent -> personName parent ++ " [" ++ show (personId parent) ++ "], " ) parents
+                            putBar
 
-        
+                    replLoop rState
+
         _ -> do
             putStrLn "Unknown command or invalid arguments."
             help
@@ -105,7 +126,17 @@ replLoop rState = do
 
 -- Just a basic help message.
 help :: IO ()
-help = putStrLn "Available commands: help, create, update birth, advance"
+help = putStrLn "Available commands: help, create, update birth|mortality, advance, examine"
+
+-- Some helper print functions
+put20 :: Char -> IO ()
+put20 c = putStrLn $ replicate 20 c
+
+putBar :: IO ()
+putBar = put20 '='
+
+putLine :: IO ()
+putLine = put20 '-'
 
 -- Population Manipulation
 generateInitialPopulation :: String -> Int -> Ratio -> Ratio -> Ratio -> IO Population
@@ -167,12 +198,12 @@ printPopulationReport label pop = do
         sexCounts = map (\thisSex -> (thisSex, length [p | p <- people pop, sex p == thisSex])) sexes
 
 
-    putStrLn "==================="
+    putBar
     putStrLn $ label ++ " " ++ popName pop
-    putStrLn "-------------------"
+    putLine
     putStrLn $ "Total Population: " ++ show ( length $ people pop)
-    putStrLn "-------------------"
+    putLine
     mapM_ (\(ag, count) -> putStrLn $ " - " ++ show ag ++ " | " ++ show count) ageCounts
-    putStrLn "-------------------"
+    putLine
     mapM_ (\(thisSex, count) -> putStrLn $ " - " ++ show thisSex ++ " | " ++ show count) sexCounts
-    putStrLn "==================="
+    putBar
