@@ -51,7 +51,9 @@ replLoop rState = do
                     case uRest of
                         [] -> putStrLn "Update one of: birth"
                         "birth" : _ -> putStrLn "update birth <new ratio>"
+                        "mortality" : _ -> putStrLn "update mortality <new ratio>"
                         x : _ -> putStrLn $ "Unknown update argument `" ++ x ++ "`."
+                "advance" : _ -> putStrLn "advance <years>"
                 x : _ -> putStrLn $ "Unknown command `" ++ x ++ "`."
             replLoop rState
         "create" : name : hcStr : sxStr : brStr : mrStr : _ -> do
@@ -79,6 +81,22 @@ replLoop rState = do
                     let newPop  = pop { baseMortalityRate = read mStr }
                     putStrLn "Updated base mortality rate."
                     replLoop rState { activePopulation = Just newPop }
+        -- the meat and potatoes.
+        "advance" : yearsStr : _ ->
+            case activePopulation rState of
+                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
+                Just pop -> do
+                    let steps = read yearsStr :: Int
+                    if steps < 0 then putStrLn "Error: cannot go back in time"
+                    else do
+                        putStrLn $ "Advancing simulation by " ++ yearsStr ++ " years..."
+
+                        let simAction = runMultipleYears steps pop
+                            (finalPop,finalState) = runState simAction (activeSimState rState)
+                        
+                        printPopulationReport ("After " ++ yearsStr ++ " Years") finalPop
+                        replLoop rState { activePopulation = Just finalPop, activeSimState = finalState }
+
         
         _ -> do
             putStrLn "Unknown command or invalid arguments."
@@ -87,8 +105,9 @@ replLoop rState = do
 
 -- Just a basic help message.
 help :: IO ()
-help = putStrLn "Available commands: help, create, update birth"
+help = putStrLn "Available commands: help, create, update birth, advance"
 
+-- Population Manipulation
 generateInitialPopulation :: String -> Int -> Ratio -> Ratio -> Ratio -> IO Population
 generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
     -- Get a fresh random number generator from the system
@@ -132,6 +151,12 @@ generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
                 , parentIds   = []
                 , specialness = 0
                 }
+
+runMultipleYears :: Int -> Population -> SimMonad Population
+runMultipleYears 0 pop = return pop
+runMultipleYears n pop = do
+    nextPop <- advancePopulation pop
+    runMultipleYears (n - 1) nextPop
 
 -- Print a visual representation of the population
 printPopulationReport :: String -> Population -> IO ()
