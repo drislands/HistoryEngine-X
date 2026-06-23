@@ -105,7 +105,7 @@ replLoop rState = do
             case activePopulation rState of
                 Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
                 Just pop -> do
-                    let pId = read pIdStr :: Int
+                    let pId = read pIdStr :: PersonId
                         person = findPerson pId (people pop)
                     
                     case person of
@@ -179,7 +179,7 @@ runMultipleYears :: Int -> Population -> SimMonad Population
 runMultipleYears 0 pop = return pop
 runMultipleYears n pop = do
     nextPop <- advancePopulation pop
-    runMultipleYears (n - 1) nextPop
+    runMultipleYears (n - 1) (snd nextPop) -- TODO: Do the real stuff
 
 -- Print a visual representation of the population
 printPopulationReport :: String -> Population -> IO ()

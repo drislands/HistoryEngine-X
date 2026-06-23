@@ -3,6 +3,7 @@ module HistoryEngine.Simulation where
 import HistoryEngine.Logic
 import HistoryEngine.Types
 import Data.Maybe (catMaybes)
+import Data.List
 import Control.Monad.State
 import System.Random (StdGen, randomR)
 
@@ -11,7 +12,21 @@ type SimState = (StdGen, PersonId)
 
 type SimMonad a = State SimState a
 
-advancePopulation :: Population -> SimMonad Population
+
+advanceWorld :: World -> SimMonad World
+advanceWorld world = do
+    popChanges <- mapM advancePopulation (populations world)
+
+    let deceasedIds = concatMap (pcDeaths . fst) popChanges
+        babyIds     = concatMap (pcBirths . fst) popChanges
+        newPops     = map snd popChanges
+        newYear     = currentYear world + 1
+        newBundle   = (PopulationChange{pcDeaths=deceasedIds,pcBirths=babyIds},currentYear world)
+        oldLedger   = historicalLedger world
+
+    return world { populations = newPops, currentYear = newYear, historicalLedger = newBundle : oldLedger }
+
+advancePopulation :: Population -> SimMonad (BundledPopChange Population)
 advancePopulation pop = do
     -- Age em up
     let agedPeople = map (\p -> p { age = age p + 1 }) (people pop)
@@ -22,8 +37,13 @@ advancePopulation pop = do
     -- Who is born?
     newBabies <- generateOffspring (currentBirthRate pop) survivingPeople
 
+    -- Get the IDs we're bundling
+    let deceasedIds = map personId (agedPeople \\ survivingPeople)
+        babyIds     = map personId newBabies
+        popChange   = PopulationChange { pcDeaths = deceasedIds, pcBirths = babyIds }
+
     -- Update the population with the survivors
-    return pop { people = survivingPeople ++ newBabies }
+    return (popChange, pop { people = survivingPeople ++ newBabies })
 
 rollForDeath :: Ratio  -> [Person] -> SimMonad [Person]
 rollForDeath rate = filterM checkSurvival

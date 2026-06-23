@@ -39,7 +39,15 @@ data Population = Population
     , discoveries       :: [Discovery]
     } deriving (Show, Eq)
 
+data PopulationChange = PopulationChange
+    { pcBirths :: [PersonId]
+    , pcDeaths :: [PersonId]
+    } deriving (Show, Eq)
+
+type BundledPopChange a = (PopulationChange, a)
+
 data World = World
-    { currentYear :: Year
-    , populations :: [Population]
+    { currentYear      :: Year
+    , populations      :: [Population]
+    , historicalLedger :: [BundledPopChange Year]
     } deriving (Show, Eq)
