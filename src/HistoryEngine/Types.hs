@@ -36,6 +36,7 @@ data Population = Population
     , baseBirthRate     :: Ratio      -- Base percentage (e.g., 0.15)
     , baseMortalityRate :: Ratio      -- Base percentage (e.g., 0.10)
     , people            :: [Person]
+    , deceased          :: [Person]
     , discoveries       :: [Discovery]
     } deriving (Show, Eq)
 

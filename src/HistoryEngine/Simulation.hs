@@ -3,9 +3,9 @@ module HistoryEngine.Simulation where
 import HistoryEngine.Logic
 import HistoryEngine.Types
 import Data.Maybe (catMaybes)
-import Data.List
 import Control.Monad.State
 import System.Random (StdGen, randomR)
+import Data.Foldable (foldlM)
 
 
 type SimState = (StdGen, PersonId)
@@ -32,26 +32,34 @@ advancePopulation pop = do
     let agedPeople = map (\p -> p { age = age p + 1 }) (people pop)
 
     -- Who dies?
-    survivingPeople <- rollForDeath (currentMortalityRate pop) agedPeople
+    (survivingPeople,deadPeople) <- rollForDeath (currentMortalityRate pop) agedPeople
+    -- TODO: keep the deceased in a different pool for the population...?
 
     -- Who is born?
     newBabies <- generateOffspring (currentBirthRate pop) survivingPeople
 
     -- Get the IDs we're bundling
-    let deceasedIds = map personId (agedPeople \\ survivingPeople)
+    let deceasedIds = map personId deadPeople
         babyIds     = map personId newBabies
         popChange   = PopulationChange { pcDeaths = deceasedIds, pcBirths = babyIds }
+        totalDead   = deadPeople ++ deceased pop
 
     -- Update the population with the survivors
-    return (popChange, pop { people = survivingPeople ++ newBabies })
+    return (popChange, pop { people = survivingPeople ++ newBabies, deceased = totalDead })
 
-rollForDeath :: Ratio  -> [Person] -> SimMonad [Person]
-rollForDeath rate = filterM checkSurvival
+-- Get a tuple containing the survivors and deceased, in that order.
+rollForDeath :: Ratio  -> [Person] -> SimMonad ([Person],[Person])
+rollForDeath rate = foldlM liveOrDie ([],[])
     where
-        checkSurvival :: Person -> SimMonad Bool
-        checkSurvival _ = do
+        checkSurvival :: SimMonad Bool
+        checkSurvival = do
             roll <- rollDoubleRange (0.0, 1.0)
             return (roll > rate)
+        liveOrDie :: ([Person],[Person]) -> Person -> SimMonad ([Person],[Person])
+        liveOrDie (living,dead) person = do
+            survived <- checkSurvival
+            if survived then return (person:living,dead)
+            else return (living,person:dead)
 
 generateOffspring :: Ratio  -> [Person] -> SimMonad [Person]
 generateOffspring birthRate pool = do

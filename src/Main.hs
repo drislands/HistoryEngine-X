@@ -158,6 +158,7 @@ generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
         , baseBirthRate      = birthRatio
         , baseMortalityRate  = mortalityRatio
         , people             = males ++ females
+        , deceased           = []
         , discoveries        = []
         }
     where
