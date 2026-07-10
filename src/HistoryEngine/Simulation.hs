@@ -6,7 +6,6 @@ import Data.Maybe (catMaybes)
 import Control.Monad.State
 import System.Random (StdGen, randomR)
 import Data.Foldable (foldlM)
-import qualified Data.Map as Map
 
 
 type SimState = (StdGen, PersonId)
@@ -16,8 +15,7 @@ type SimMonad a = State SimState a
 
 advanceWorld :: World -> SimMonad World
 advanceWorld world = do
-    let agedCensus = Map.map (\p -> p { age = age p + 1}) (census world)
-    popChanges <- mapM (advancePopulation agedCensus) (populations world)
+    popChanges <- mapM advancePopulation (populations world)
 
     let deceasedIds = concatMap (pcDeaths . fst) popChanges
         babyIds     = concatMap (pcBirths . fst) popChanges
@@ -28,10 +26,10 @@ advanceWorld world = do
 
     return world { populations = newPops, currentYear = newYear, historicalLedger = newBundle : oldLedger }
 
-advancePopulation :: Map.Map PersonId Person -> Population -> SimMonad (BundledPopChange Population)
-advancePopulation world pop = do
+advancePopulation :: Population -> SimMonad (BundledPopChange Population)
+advancePopulation pop = do
     -- Age em up
-    let popPeople = getPeople world pop
+    let agedPeople = map (\p -> p { age = age p + 1 }) (people pop)
 
     -- Who dies?
     (survivingPeople,deadPeople) <- rollForDeath (currentMortalityRate pop) agedPeople

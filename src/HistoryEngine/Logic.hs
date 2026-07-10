@@ -2,9 +2,7 @@ module HistoryEngine.Logic where
 
 import HistoryEngine.Types
 import Data.List (find)
-import Data.Maybe
 import qualified Data.Set as Set
-import qualified Data.Map as Map
 
 -- Person functions
 ageGroup :: Person -> AgeGroup
@@ -50,9 +48,3 @@ currentBirthRate pop =
     let base = baseBirthRate pop
         mods = sum [ birthRateMod d | d <- discoveries pop ]
     in  max 0.0 (base + mods)
-
-getPeople :: Map.Map PersonId Person -> Population -> [Person]
-getPeople pMap pop = mapMaybe (`Map.lookup` pMap) (people pop)
-
-getDeceased :: Map.Map PersonId Person -> Population -> [Person]
-getDeceased pMap pop = mapMaybe (`Map.lookup` pMap) (deceased pop)
