@@ -48,3 +48,9 @@ currentBirthRate pop =
     let base = baseBirthRate pop
         mods = sum [ birthRateMod d | d <- discoveries pop ]
     in  max 0.0 (base + mods)
+
+-- World functions
+getBundleByYear :: Int -> World -> Maybe (BundledPopChange Year)
+getBundleByYear year world =
+    let ledger = historicalLedger world
+    in find (\(_,y) -> y == year) ledger

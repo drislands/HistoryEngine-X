@@ -163,7 +163,6 @@ replLoop rState = do
                             putStrLn $ "Age: " ++ show (age p)
                             putStrLn $ "Parents: " ++ concatMap (\parent -> personName parent ++ " [" ++ show (personId parent) ++ "], ") parents
                             putBar
-                    replLoop rState
                 "population" -> do
                     let sState = activeSimState rState
                         world = simWorld sState
@@ -172,10 +171,17 @@ replLoop rState = do
                         Nothing -> putStrLn ("Population " ++ examinee ++ " does not exist!")
                         Just p -> do
                             printPopulationReport ("Year " ++ show (currentYear world)) p
-                    replLoop rState
+                "year" -> do
+                    let year = read examinee :: Year
+                        sState = activeSimState rState
+                        world = simWorld sState
+                    case getBundleByYear year world of
+                        Nothing -> putStrLn ("No data for year " ++ examinee)
+                        Just bundle -> do
+                            printBundleReport bundle
                 _ -> do
                     putStrLn ("Unknown examination type: " ++ examineType)
-                    replLoop rState
+            replLoop rState
                 
         _ -> do
             putStrLn "Unknown command or invalid arguments."
@@ -252,4 +258,14 @@ printPopulationReport label pop = do
     mapM_ (\(ag, count) -> putStrLn $ " - " ++ show ag ++ "  | " ++ show count) ageCounts
     putLine
     mapM_ (\(thisSex, count) -> putStrLn $ " - " ++ show thisSex ++ " | " ++ show count) sexCounts
+    putBar
+
+-- Print a visual representation of a year's pop changes
+printBundleReport :: BundledPopChange Year -> IO ()
+printBundleReport (popChange, year) = do
+    putBar
+    putStrLn $ "Year " ++ show year
+    putLine
+    putStrLn $ "Total Births: " ++ show (length $ pcBirths popChange)
+    putStrLn $ "Total Deaths: " ++ show (length $ pcDeaths popChange)
     putBar
