@@ -8,13 +8,19 @@ import System.Random (StdGen, randomR)
 import Data.Foldable (foldlM)
 
 
-type SimState = (StdGen, PersonId)
+data SimState = SimState
+    { simGen       :: StdGen
+    , nextPersonId :: PersonId
+    , simWorld     :: World
+    } deriving (Show)
 
 type SimMonad a = State SimState a
 
 
-advanceWorld :: World -> SimMonad World
-advanceWorld world = do
+advanceWorld :: SimMonad ()
+advanceWorld = do
+    s <- get
+    let world = simWorld s
     popChanges <- mapM advancePopulation (populations world)
 
     let deceasedIds = concatMap (pcDeaths . fst) popChanges
@@ -23,8 +29,13 @@ advanceWorld world = do
         newYear     = currentYear world + 1
         newBundle   = (PopulationChange{pcDeaths=deceasedIds,pcBirths=babyIds},currentYear world)
         oldLedger   = historicalLedger world
+        newWorld    = world { populations = newPops, currentYear = newYear, historicalLedger = newBundle : oldLedger }
 
-    return world { populations = newPops, currentYear = newYear, historicalLedger = newBundle : oldLedger }
+    put s { simWorld = newWorld }
+
+runWorldMultipleYears :: Int -> SimMonad ()
+runWorldMultipleYears 0 = return ()
+runWorldMultipleYears n = advanceWorld >> runWorldMultipleYears (n - 1)
 
 advancePopulation :: Population -> SimMonad (BundledPopChange Population)
 advancePopulation pop = do
@@ -100,22 +111,23 @@ calculateSpecialness = do
 
 freshId :: SimMonad PersonId
 freshId = do
-    (gen, nextId) <- get
-    put (gen, nextId + 1)
-    return nextId
+    s <- get
+    let nid = nextPersonId s
+    put s { nextPersonId = nid + 1 }
+    return nid
 
 rollDoubleRange :: (Double, Double) -> SimMonad Double
 rollDoubleRange (low, high) = do
-    (gen, nextId) <- get
-    let (val, nextGen) = randomR (low, high) gen
-    put (nextGen, nextId)
+    s <- get
+    let (val, nextGen) = randomR (low, high) (simGen s)
+    put s { simGen = nextGen }
     return val
 
 rollIntRange :: (Int, Int) -> SimMonad Int
 rollIntRange (low, high) = do
-    (gen, nextId) <- get
-    let (val, nextGen) = randomR (low, high) gen
-    put (nextGen, nextId)
+    s <- get
+    let (val, nextGen) = randomR (low, high) (simGen s)
+    put s { simGen = nextGen }
     return val
 
 rollListSelection :: [a] -> SimMonad a

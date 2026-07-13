@@ -1,14 +1,13 @@
 module Main where
 
-import HistoryEngine.Types
+import Control.Monad.State
+import Data.List (find)
+import Data.Maybe (mapMaybe)
 import HistoryEngine.Logic
 import HistoryEngine.Simulation
-
-import System.Random (newStdGen)
-import Control.Monad.State
+import HistoryEngine.Types
 import System.IO (hFlush, stdout)
-import Data.Maybe (mapMaybe)
-
+import System.Random (newStdGen)
 
 main :: IO ()
 main = do
@@ -16,17 +15,18 @@ main = do
     putStrLn "History Engine REPL - Alpha"
     putBar
 
-    -- Initialize random generator
+    -- Initialize random generator and initial empty World
     systemGen <- newStdGen
-    let initialState = (systemGen, 1)
-        initialRepl  = ReplState { activePopulation = Nothing, activeSimState = initialState }
-    
+    let initialWorld = World{currentYear = 0, populations = [], historicalLedger = []}
+        initialState = SimState{simGen = systemGen, nextPersonId = 1, simWorld = initialWorld}
+        initialRepl = ReplState{activePopulationName = Nothing, activeSimState = initialState}
+
     replLoop initialRepl
 
 -- REPL logic
 data ReplState = ReplState
-    { activePopulation :: Maybe Population
-    , activeSimState   :: SimState
+    { activePopulationName :: Maybe String
+    , activeSimState :: SimState
     }
 
 replLoop :: ReplState -> IO ()
@@ -43,9 +43,10 @@ replLoop rState = do
             case hRest of
                 [] -> help
                 "create" : _ -> putStrLn "create <name> <headcount> <sex ratio> <birth ratio> <mortality ratio>"
+                "select" : _ -> putStrLn "select <population name>"
                 "update" : uRest -> do
                     case uRest of
-                        [] -> putStrLn "Update one of: birth"
+                        [] -> putStrLn "Update one of: birth, mortality"
                         "birth" : _ -> putStrLn "update birth <new ratio>"
                         "mortality" : _ -> putStrLn "update mortality <new ratio>"
                         x : _ -> putStrLn $ "Unknown update argument `" ++ x ++ "`."
@@ -55,73 +56,112 @@ replLoop rState = do
             replLoop rState
         "create" : name : hcStr : sxStr : brStr : mrStr : _ -> do
             let headcount = read hcStr :: Int
-                sRatio    = read sxStr :: Ratio
-                bRatio    = read brStr :: Ratio
-                mRatio    = read mrStr :: Ratio
+                sRatio = read sxStr :: Ratio
+                bRatio = read brStr :: Ratio
+                mRatio = read mrStr :: Ratio
 
-                -- Pass the state in, carry it back out
                 simAction = generateInitialPopulation name headcount sRatio bRatio mRatio
                 (newPop, nextState) = runState simAction (activeSimState rState)
+
+                -- Append newPop to the world populations
+                world = simWorld nextState
+                updatedWorld = world{populations = populations world ++ [newPop]}
+                finalState = nextState{simWorld = updatedWorld}
+
             putStrLn $ "Created population '" ++ name ++ "' with " ++ hcStr ++ " founders."
-
-            -- Population created, start the loop again with this as the single pop
-            replLoop rState { activePopulation = Just newPop, activeSimState = nextState}
+            replLoop rState{activePopulationName = Just name, activeSimState = finalState}
+        "select" : name : _ -> do
+            let world = simWorld (activeSimState rState)
+                pops = populations world
+            case find (\p -> popName p == name) pops of
+                Nothing -> do
+                    putStrLn $ "Error: Population '" ++ name ++ "' does not exist!"
+                    replLoop rState
+                Just _ -> do
+                    putStrLn $ "Selected active population '" ++ name ++ "'."
+                    replLoop rState{activePopulationName = Just name}
         "update" : "birth" : bStr : _ -> do
-            case activePopulation rState of
-                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
-                Just pop -> do
-                    let newPop  = pop { baseBirthRate = read bStr }
-                    putStrLn "Updated base birth rate."
-                    replLoop rState { activePopulation = Just newPop }
+            case activePopulationName rState of
+                Nothing -> putStrLn "Error: Select or create a population first!" >> replLoop rState
+                Just name -> do
+                    let sState = activeSimState rState
+                        world = simWorld sState
+                        pops = populations world
+                    case find (\p -> popName p == name) pops of
+                        Nothing -> putStrLn ("Error: Active population '" ++ name ++ "' not found!") >> replLoop rState
+                        Just pop -> do
+                            let newPop = pop{baseBirthRate = read bStr}
+                                newPops = map (\p -> if popName p == name then newPop else p) pops
+                                newWorld = world{populations = newPops}
+                                newSimState = sState{simWorld = newWorld}
+                            putStrLn $ "Updated base birth rate for population '" ++ name ++ "'."
+                            replLoop rState{activeSimState = newSimState}
         "update" : "mortality" : mStr : _ -> do
-            case activePopulation rState of
-                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
-                Just pop -> do
-                    let newPop  = pop { baseMortalityRate = read mStr }
-                    putStrLn "Updated base mortality rate."
-                    replLoop rState { activePopulation = Just newPop }
-        -- the meat and potatoes.
-        "advance" : yearsStr : _ ->
-            case activePopulation rState of
-                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
-                Just pop -> do
-                    let steps = read yearsStr :: Int
-                    if steps < 0 then putStrLn "Error: cannot go back in time" >> replLoop rState
-                    else do
-                        putStrLn $ "Advancing simulation by " ++ yearsStr ++ " years..."
-
-                        let simAction = runMultipleYears steps pop
-                            (finalPop,finalState) = runState simAction (activeSimState rState)
-                        
-                        printPopulationReport ("After " ++ yearsStr ++ " Years") finalPop
-                        replLoop rState { activePopulation = Just finalPop, activeSimState = finalState }
+            case activePopulationName rState of
+                Nothing -> putStrLn "Error: Select or create a population first!" >> replLoop rState
+                Just name -> do
+                    let sState = activeSimState rState
+                        world = simWorld sState
+                        pops = populations world
+                    case find (\p -> popName p == name) pops of
+                        Nothing -> putStrLn ("Error: Active population '" ++ name ++ "' not found!") >> replLoop rState
+                        Just pop -> do
+                            let newPop = pop{baseMortalityRate = read mStr}
+                                newPops = map (\p -> if popName p == name then newPop else p) pops
+                                newWorld = world{populations = newPops}
+                                newSimState = sState{simWorld = newWorld}
+                            putStrLn $ "Updated base mortality rate for population '" ++ name ++ "'."
+                            replLoop rState{activeSimState = newSimState}
+        "advance" : yearsStr : _ -> do
+            let steps = read yearsStr :: Int
+            if steps < 0
+                then putStrLn "Error: cannot go back in time" >> replLoop rState
+                else do
+                    let sState = activeSimState rState
+                        world = simWorld sState
+                        pops = populations world
+                    if null pops
+                        then putStrLn "Error: Create a population first!" >> replLoop rState
+                        else do
+                            putStrLn $ "Advancing simulation by " ++ yearsStr ++ " years..."
+                            let simAction = runWorldMultipleYears steps
+                                (_, finalState) = runState simAction sState
+                                finalWorld = simWorld finalState
+                            mapM_ (printPopulationReport ("After " ++ yearsStr ++ " Years")) (populations finalWorld)
+                            replLoop rState{activeSimState = finalState}
         "list" : _ -> do
-            case activePopulation rState of
-                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
-                Just pop -> do
-                    putStrLn $ "Here are all person IDs: " ++ show (people pop)
+            let sState = activeSimState rState
+                world = simWorld sState
+                pops = populations world
+            if null pops
+                then putStrLn "Error: No populations exist. Create one first!" >> replLoop rState
+                else do
+                    putStrLn "Populations in the world:"
+                    mapM_
+                        ( \pop -> do
+                            let prefix = if Just (popName pop) == activePopulationName rState then " * " else "   "
+                            putStrLn $ prefix ++ popName pop ++ " (Count: " ++ show (length (people pop)) ++ ")"
+                        )
+                        pops
                     replLoop rState
         "examine" : pIdStr : _ -> do
-            case activePopulation rState of
-                Nothing -> putStrLn "Error: Create a population first!" >> replLoop rState
-                Just pop -> do
-                    let pId = read pIdStr :: PersonId
-                        person = findPerson pId (people pop)
-                    
-                    case person of
-                        Nothing -> putStrLn ("Person with ID " ++ pIdStr ++ " does not exist!")
-                        Just p -> do
-                            let parents = mapMaybe (\parId -> findPerson parId (people pop)) (parentIds p)
-                            putBar
-                            putStrLn $ personName p
-                            putLine
-                            putStrLn $ "Sex: " ++ show (sex p)
-                            putStrLn $ "Age: " ++ show (age p)
-                            putStrLn $ "Parents: " ++ concatMap (\parent -> personName parent ++ " [" ++ show (personId parent) ++ "], " ) parents
-                            putBar
-
-                    replLoop rState
-
+            let sState = activeSimState rState
+                world = simWorld sState
+                allPeople = concatMap (\pop -> people pop ++ deceased pop) (populations world)
+                pId = read pIdStr :: PersonId
+                person = findPerson pId allPeople
+            case person of
+                Nothing -> putStrLn ("Person with ID " ++ pIdStr ++ " does not exist!")
+                Just p -> do
+                    let parents = mapMaybe (`findPerson` allPeople) (parentIds p)
+                    putBar
+                    putStrLn $ personName p
+                    putLine
+                    putStrLn $ "Sex: " ++ show (sex p)
+                    putStrLn $ "Age: " ++ show (age p)
+                    putStrLn $ "Parents: " ++ concatMap (\parent -> personName parent ++ " [" ++ show (personId parent) ++ "], ") parents
+                    putBar
+            replLoop rState
         _ -> do
             putStrLn "Unknown command or invalid arguments."
             help
@@ -129,7 +169,7 @@ replLoop rState = do
 
 -- Just a basic help message.
 help :: IO ()
-help = putStrLn "Available commands: help, create, update birth|mortality, advance, examine"
+help = putStrLn "Available commands: help, create, select, update birth|mortality, advance, examine"
 
 -- Some helper print functions
 put20 :: Char -> IO ()
@@ -147,40 +187,35 @@ generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
     -- Set gender populations
     let maleCount = round (fromIntegral popCount * sexRatio)
         femaleCount = popCount - maleCount
-    
+
     -- Build the action that creates the actual people
     males <- replicateM maleCount (createStartingPerson Male)
     females <- replicateM femaleCount (createStartingPerson Female)
-    
 
-    return Population
-        { popName            = name
-        , baseBirthRate      = birthRatio
-        , baseMortalityRate  = mortalityRatio
-        , people             = males ++ females
-        , deceased           = []
-        , discoveries        = []
-        }
-    where
-        createStartingPerson :: Sex -> SimMonad Person
-        createStartingPerson personSex = do
-            pId <- freshId
-            -- TODO: age range ratios, too. For now we're just doing Adults
-            startingAge <- rollIntRange (18, 49)
-            return Person
-                { personId    = pId
-                , personName  = "Founder " ++ show pId
-                , age         = startingAge
-                , sex         = personSex
-                , parentIds   = []
+    return
+        Population
+            { popName = name
+            , baseBirthRate = birthRatio
+            , baseMortalityRate = mortalityRatio
+            , people = males ++ females
+            , deceased = []
+            , discoveries = []
+            }
+  where
+    createStartingPerson :: Sex -> SimMonad Person
+    createStartingPerson personSex = do
+        pId <- freshId
+        -- TODO: age range ratios, too. For now we're just doing Adults
+        startingAge <- rollIntRange (18, 49)
+        return
+            Person
+                { personId = pId
+                , personName = "Founder " ++ show pId
+                , age = startingAge
+                , sex = personSex
+                , parentIds = []
                 , specialness = 0
                 }
-
-runMultipleYears :: Int -> Population -> SimMonad Population
-runMultipleYears 0 pop = return pop
-runMultipleYears n pop = do
-    nextPop <- advancePopulation pop
-    runMultipleYears (n - 1) (snd nextPop) -- TODO: Do the real stuff
 
 -- Print a visual representation of the population
 printPopulationReport :: String -> Population -> IO ()
@@ -190,11 +225,10 @@ printPopulationReport label pop = do
         ageCounts = map (\ag -> (ag, length [p | p <- people pop, ageGroup p == ag])) ages
         sexCounts = map (\thisSex -> (thisSex, length [p | p <- people pop, sex p == thisSex])) sexes
 
-
     putBar
     putStrLn $ label ++ " " ++ popName pop
     putLine
-    putStrLn $ "Total Population: " ++ show ( length $ people pop)
+    putStrLn $ "Total Population: " ++ show (length $ people pop)
     putLine
     mapM_ (\(ag, count) -> putStrLn $ " - " ++ show ag ++ "  | " ++ show count) ageCounts
     putLine
