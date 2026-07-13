@@ -73,7 +73,7 @@ replLoop rState = do
         "select" : name : _ -> do
             let world = simWorld (activeSimState rState)
                 pops = populations world
-            case find (\p -> popName p == name) pops of
+            case findNamedPopulation name pops of
                 Nothing -> do
                     putStrLn $ "Error: Population '" ++ name ++ "' does not exist!"
                     replLoop rState
@@ -87,7 +87,7 @@ replLoop rState = do
                     let sState = activeSimState rState
                         world = simWorld sState
                         pops = populations world
-                    case find (\p -> popName p == name) pops of
+                    case findNamedPopulation name pops of
                         Nothing -> putStrLn ("Error: Active population '" ++ name ++ "' not found!") >> replLoop rState
                         Just pop -> do
                             let newPop = pop{baseBirthRate = read bStr}
@@ -103,7 +103,7 @@ replLoop rState = do
                     let sState = activeSimState rState
                         world = simWorld sState
                         pops = populations world
-                    case find (\p -> popName p == name) pops of
+                    case findNamedPopulation name pops of
                         Nothing -> putStrLn ("Error: Active population '" ++ name ++ "' not found!") >> replLoop rState
                         Just pop -> do
                             let newPop = pop{baseMortalityRate = read mStr}
@@ -144,24 +144,39 @@ replLoop rState = do
                         )
                         pops
                     replLoop rState
-        "examine" : pIdStr : _ -> do
-            let sState = activeSimState rState
-                world = simWorld sState
-                allPeople = concatMap (\pop -> people pop ++ deceased pop) (populations world)
-                pId = read pIdStr :: PersonId
-                person = findPerson pId allPeople
-            case person of
-                Nothing -> putStrLn ("Person with ID " ++ pIdStr ++ " does not exist!")
-                Just p -> do
-                    let parents = mapMaybe (`findPerson` allPeople) (parentIds p)
-                    putBar
-                    putStrLn $ personName p
-                    putLine
-                    putStrLn $ "Sex: " ++ show (sex p)
-                    putStrLn $ "Age: " ++ show (age p)
-                    putStrLn $ "Parents: " ++ concatMap (\parent -> personName parent ++ " [" ++ show (personId parent) ++ "], ") parents
-                    putBar
-            replLoop rState
+        "examine" : examineType : examinee : _ -> do
+            case examineType of
+                "person" -> do
+                    let sState = activeSimState rState
+                        world = simWorld sState
+                        allPeople = concatMap (\pop -> people pop ++ deceased pop) (populations world)
+                        pId = read examinee :: PersonId
+                        person = findPerson pId allPeople
+                    case person of
+                        Nothing -> putStrLn ("Person with ID " ++ examinee ++ " does not exist!")
+                        Just p -> do
+                            let parents = mapMaybe (`findPerson` allPeople) (parentIds p)
+                            putBar
+                            putStrLn $ personName p
+                            putLine
+                            putStrLn $ "Sex: " ++ show (sex p)
+                            putStrLn $ "Age: " ++ show (age p)
+                            putStrLn $ "Parents: " ++ concatMap (\parent -> personName parent ++ " [" ++ show (personId parent) ++ "], ") parents
+                            putBar
+                    replLoop rState
+                "population" -> do
+                    let sState = activeSimState rState
+                        world = simWorld sState
+                        pop = findNamedPopulation examinee (populations world)
+                    case pop of
+                        Nothing -> putStrLn ("Population " ++ examinee ++ " does not exist!")
+                        Just p -> do
+                            printPopulationReport ("Year " ++ show (currentYear world)) p
+                    replLoop rState
+                _ -> do
+                    putStrLn ("Unknown examination type: " ++ examineType)
+                    replLoop rState
+                
         _ -> do
             putStrLn "Unknown command or invalid arguments."
             help
@@ -180,6 +195,10 @@ putBar = put20 '='
 
 putLine :: IO ()
 putLine = put20 '-'
+
+-- Other helper functions
+findNamedPopulation :: String -> [Population] -> Maybe Population
+findNamedPopulation name = find (\p -> popName p == name)
 
 -- Population Manipulation
 generateInitialPopulation :: String -> Int -> Ratio -> Ratio -> Ratio -> SimMonad Population
