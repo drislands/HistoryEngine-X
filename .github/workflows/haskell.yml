@@ -23,8 +23,8 @@ jobs:
     - name: Set up Haskell
       uses: haskell-actions/setup@v2
       with:
-        ghc-version: '9.4.7' # Change to your preferred GHC version
-        cabal-version: '3.0'
+        ghc-version: '9.6' # Change to your preferred GHC version
+        cabal-version: '3.10'
 
     - name: Cache dependencies
       uses: actions/cache@v3
