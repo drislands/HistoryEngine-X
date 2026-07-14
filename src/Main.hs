@@ -127,7 +127,7 @@ replLoop rState = do
                             let simAction = runWorldMultipleYears steps
                                 (_, finalState) = runState simAction sState
                                 finalWorld = simWorld finalState
-                            mapM_ (printPopulationReport ("After " ++ yearsStr ++ " Years")) (populations finalWorld)
+                            mapM_ (printPopulationReport ("Year " ++ show (currentYear finalWorld))) (populations finalWorld)
                             replLoop rState{activeSimState = finalState}
         "list" : _ -> do
             let sState = activeSimState rState
