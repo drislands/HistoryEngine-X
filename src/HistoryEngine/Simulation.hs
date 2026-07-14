@@ -4,6 +4,7 @@ import HistoryEngine.Logic
 import HistoryEngine.Types
 import Data.Maybe (catMaybes)
 import Control.Monad.State
+import Control.Monad (forM)
 import System.Random (StdGen, randomR)
 import Data.Foldable (foldlM)
 import qualified Data.Map as Map
