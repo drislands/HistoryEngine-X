@@ -117,24 +117,27 @@ generateOffspring birthRate pool = do
     let females = [p | p <- pool, sex p == Female && canReproduce p]
         males   = [p | p <- pool, sex p == Male && canReproduce p]
     maybeBabies <- forM females $ \mom -> do
-        -- Filter out the male pool to individuals unrelated to this female
         let validDads = filter (\m -> areUnrelated (personId mom) (personId m) cns) males
-        birthRoll <- rollDoubleRange (0.0, 1.0)
-        if birthRoll > birthRate
+            dadsPool  = if null validDads then males else validDads
+        if null dadsPool
             then return Nothing
             else do
-                dad    <- rollListSelection (if null validDads then males else validDads)
-                newId  <- freshId
-                newSex <- rollSex
-                spec   <- calculateSpecialness
-                return $ Just Person
-                    { personId = newId
-                    , personName = "whatever"
-                    , age  = 0
-                    , sex  = newSex
-                    , parentIds = [personId dad,personId mom]
-                    , specialness = spec
-                    }
+                birthRoll <- rollDoubleRange (0.0, 1.0)
+                if birthRoll > birthRate
+                    then return Nothing
+                    else do
+                        dad    <- rollListSelection dadsPool
+                        newId  <- freshId
+                        newSex <- rollSex
+                        spec   <- calculateSpecialness
+                        return $ Just Person
+                            { personId = newId
+                            , personName = "whatever"
+                            , age  = 0
+                            , sex  = newSex
+                            , parentIds = [personId dad,personId mom]
+                            , specialness = spec
+                            }
 
     -- Flatten the [Maybe Person] down to [Person]
     return (catMaybes maybeBabies)

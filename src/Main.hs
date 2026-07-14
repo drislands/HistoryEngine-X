@@ -121,7 +121,6 @@ replLoop rState = do
                     let sState = activeSimState rState
                         world  = simWorld sState
                         pops   = populations world
-                        cns    = census world
                     if null pops
                         then putStrLn "Error: Create a population first!" >> replLoop rState
                         else do
@@ -129,7 +128,7 @@ replLoop rState = do
                             let simAction = runWorldMultipleYears steps
                                 (_, finalState) = runState simAction sState
                                 finalWorld = simWorld finalState
-                            mapM_ (printPopulationReport ("Year " ++ show (currentYear finalWorld)) cns) (populations finalWorld)
+                            mapM_ (printPopulationReport ("Year " ++ show (currentYear finalWorld)) (census finalWorld)) (populations finalWorld)
                             replLoop rState{activeSimState = finalState}
         "list" : _ -> do
             let sState = activeSimState rState
