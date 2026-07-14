@@ -43,7 +43,7 @@ advancePopulation pop = do
     let agedPeople = map (\p -> p { age = age p + 1 }) (people pop)
 
     -- Who dies?
-    (survivingPeople,deadPeople) <- rollForDeath (currentMortalityRate pop) agedPeople
+    (survivingPeople,deadPeople) <- rollForDeath pop agedPeople
     -- TODO: keep the deceased in a different pool for the population...?
 
     -- Who is born?
@@ -59,16 +59,27 @@ advancePopulation pop = do
     return (popChange, pop { people = survivingPeople ++ newBabies, deceased = totalDead })
 
 -- Get a tuple containing the survivors and deceased, in that order.
-rollForDeath :: Ratio  -> [Person] -> SimMonad ([Person],[Person])
-rollForDeath rate = foldlM liveOrDie ([],[])
+rollForDeath :: Population -> [Person] -> SimMonad ([Person],[Person])
+rollForDeath pop = foldlM liveOrDie ([],[])
     where
-        checkSurvival :: SimMonad Bool
-        checkSurvival = do
+        baseRate = currentMortalityRate pop
+
+        checkSurvival :: Person -> SimMonad Bool
+        checkSurvival person = do
             roll <- rollDoubleRange (0.0, 1.0)
+
+            -- Calculate an age penalty.
+            -- TODO: Make the threshold and penalty configurable
+            let ageMod = if age person > 50
+                         then fromIntegral (age person - 50) * 0.015
+                         else 0.0
+                -- Make sure it doesn't go over 100%!
+                rate = min 1.0 (baseRate + ageMod)
+
             return (roll > rate)
         liveOrDie :: ([Person],[Person]) -> Person -> SimMonad ([Person],[Person])
         liveOrDie (living,dead) person = do
-            survived <- checkSurvival
+            survived <- checkSurvival person
             if survived then return (person:living,dead)
             else return (living,person:dead)
 
@@ -79,25 +90,22 @@ generateOffspring birthRate pool = do
     maybeBabies <- forM females $ \mom -> do
         -- Filter out the male pool to individuals unrelated to this female
         let validDads = filter (\m -> areUnrelated (personId mom) (personId m) pool) males
-        if null validDads
+        birthRoll <- rollDoubleRange (0.0, 1.0)
+        if birthRoll > birthRate
             then return Nothing
             else do
-                birthRoll <- rollDoubleRange (0.0, 1.0)
-                if birthRoll > birthRate
-                    then return Nothing
-                    else do
-                        dad    <- rollListSelection validDads
-                        newId  <- freshId
-                        newSex <- rollSex
-                        spec   <- calculateSpecialness
-                        return $ Just Person
-                            { personId = newId
-                            , personName = "whatever"
-                            , age  = 0
-                            , sex  = newSex
-                            , parentIds = [personId dad,personId mom]
-                            , specialness = spec
-                            }
+                dad    <- rollListSelection (if null validDads then males else validDads)
+                newId  <- freshId
+                newSex <- rollSex
+                spec   <- calculateSpecialness
+                return $ Just Person
+                    { personId = newId
+                    , personName = "whatever"
+                    , age  = 0
+                    , sex  = newSex
+                    , parentIds = [personId dad,personId mom]
+                    , specialness = spec
+                    }
 
     -- Flatten the [Maybe Person] down to [Person]
     return (catMaybes maybeBabies)
