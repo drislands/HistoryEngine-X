@@ -12,6 +12,7 @@ executable history-engine
     other-modules:      HistoryEngine.Types
                         HistoryEngine.Logic
                         HistoryEngine.Simulation
+                        HistoryEngine.Util
     
     hs-source-dirs:     src
 

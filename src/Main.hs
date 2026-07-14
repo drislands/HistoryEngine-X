@@ -7,6 +7,7 @@ import Data.Maybe (mapMaybe)
 import HistoryEngine.Logic
 import HistoryEngine.Simulation
 import HistoryEngine.Types
+import HistoryEngine.Util
 import System.IO (hFlush, stdout)
 import System.Random (newStdGen)
 
@@ -36,7 +37,7 @@ replLoop rState = do
     hFlush stdout -- forces prompt to display immediately
     input <- getLine
 
-    let commandTokens = words input
+    let commandTokens = tokenize input
     case commandTokens of
         [] -> replLoop rState
         ["exit"] -> putStrLn "Exiting."
