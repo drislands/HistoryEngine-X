@@ -1,5 +1,6 @@
 module Main where
 
+import Control.Monad (replicateM)
 import Control.Monad.State
 import Data.List (find)
 import qualified Data.Map as Map
