@@ -6,6 +6,7 @@ import Data.Maybe (catMaybes)
 import Control.Monad.State
 import System.Random (StdGen, randomR)
 import Data.Foldable (foldlM)
+import qualified Data.Map as Map
 
 
 data SimState = SimState
@@ -20,18 +21,34 @@ type SimMonad a = State SimState a
 advanceWorld :: SimMonad ()
 advanceWorld = do
     s <- get
-    let world = simWorld s
-    popChanges <- mapM advancePopulation (populations world)
+    let world      = simWorld s
+        cns        = census world
+        -- Collect all IDs of living people
+        livingIds  = concatMap people (populations world)
+        -- Age them up in the Census
+        agedCensus = foldr (Map.adjust (\p -> p { age = age p + 1 })) cns livingIds
+        agedWorld  = world { census = agedCensus }
+    
+    put s { simWorld = agedWorld }
+        
+    popChanges <- mapM advancePopulation (populations agedWorld)
 
-    let deceasedIds = concatMap (pcDeaths . fst) popChanges
-        babyIds     = concatMap (pcBirths . fst) popChanges
-        newPops     = map snd popChanges
-        newYear     = currentYear world + 1
-        newBundle   = (PopulationChange{pcDeaths=deceasedIds,pcBirths=babyIds},currentYear world)
-        oldLedger   = historicalLedger world
-        newWorld    = world { populations = newPops, currentYear = newYear, historicalLedger = newBundle : oldLedger }
+    -- Getting the state again, since advancePopulation may have added newborns
+    s' <- get
+    let updatedWorld = simWorld s'
+        deceasedIds  = concatMap (pcDeaths . fst) popChanges
+        babyIds      = concatMap (pcBirths . fst) popChanges
+        newPops      = map snd popChanges
+        newYear      = currentYear updatedWorld + 1
+        newBundle    = (PopulationChange{pcDeaths=deceasedIds,pcBirths=babyIds}, currentYear updatedWorld)
+        oldLedger    = historicalLedger updatedWorld
+        newWorld     = updatedWorld 
+            { populations      = newPops
+            , currentYear      = newYear
+            , historicalLedger = newBundle : oldLedger 
+            }
 
-    put s { simWorld = newWorld }
+    put s' { simWorld = newWorld }
 
 runWorldMultipleYears :: Int -> SimMonad ()
 runWorldMultipleYears 0 = return ()
@@ -39,24 +56,32 @@ runWorldMultipleYears n = advanceWorld >> runWorldMultipleYears (n - 1)
 
 advancePopulation :: Population -> SimMonad (BundledPopChange Population)
 advancePopulation pop = do
-    -- Age em up
-    let agedPeople = map (\p -> p { age = age p + 1 }) (people pop)
+    sState <- get
+    let world        = simWorld sState
+        cns          = census world
+        livingPeople = getPeople cns pop
 
     -- Who dies?
-    (survivingPeople,deadPeople) <- rollForDeath pop agedPeople
+    (survivingPeople,deadPeople) <- rollForDeath pop livingPeople
     -- TODO: keep the deceased in a different pool for the population...?
 
     -- Who is born?
     newBabies <- generateOffspring (currentBirthRate pop) survivingPeople
 
     -- Get the IDs we're bundling
-    let deceasedIds = map personId deadPeople
-        babyIds     = map personId newBabies
-        popChange   = PopulationChange { pcDeaths = deceasedIds, pcBirths = babyIds }
-        totalDead   = deadPeople ++ deceased pop
+    let deceasedIds  = map personId deadPeople
+        babyIds      = map personId newBabies
+        popChange    = PopulationChange { pcDeaths = deceasedIds, pcBirths = babyIds }
+        newPeopleIds = map personId survivingPeople ++ babyIds
+        newDeadIds   = deceasedIds ++ deceased pop
+    
+    -- Put the new babies into the census
+    let updatedCensus = foldr (\p m -> Map.insert (personId p) p m) cns newBabies
+        newWorld      = world { census = updatedCensus }
+    put sState { simWorld = newWorld }
 
     -- Update the population with the survivors
-    return (popChange, pop { people = survivingPeople ++ newBabies, deceased = totalDead })
+    return (popChange, pop { people = newPeopleIds, deceased = newDeadIds })
 
 -- Get a tuple containing the survivors and deceased, in that order.
 rollForDeath :: Population -> [Person] -> SimMonad ([Person],[Person])
@@ -85,11 +110,15 @@ rollForDeath pop = foldlM liveOrDie ([],[])
 
 generateOffspring :: Ratio  -> [Person] -> SimMonad [Person]
 generateOffspring birthRate pool = do
+    sState <- get
+    let world = simWorld sState
+        cns = census world
+
     let females = [p | p <- pool, sex p == Female && canReproduce p]
         males   = [p | p <- pool, sex p == Male && canReproduce p]
     maybeBabies <- forM females $ \mom -> do
         -- Filter out the male pool to individuals unrelated to this female
-        let validDads = filter (\m -> areUnrelated (personId mom) (personId m) pool) males
+        let validDads = filter (\m -> areUnrelated (personId mom) (personId m) cns) males
         birthRoll <- rollDoubleRange (0.0, 1.0)
         if birthRoll > birthRate
             then return Nothing

@@ -2,6 +2,7 @@ module Main where
 
 import Control.Monad.State
 import Data.List (find)
+import qualified Data.Map as Map
 import Data.Maybe (mapMaybe)
 import HistoryEngine.Logic
 import HistoryEngine.Simulation
@@ -17,7 +18,7 @@ main = do
 
     -- Initialize random generator and initial empty World
     systemGen <- newStdGen
-    let initialWorld = World{currentYear = 0, populations = [], historicalLedger = []}
+    let initialWorld = World{currentYear = 0, populations = [], census = Map.empty, historicalLedger = []}
         initialState = SimState{simGen = systemGen, nextPersonId = 1, simWorld = initialWorld}
         initialRepl = ReplState{activePopulationName = Nothing, activeSimState = initialState}
 
@@ -118,8 +119,9 @@ replLoop rState = do
                 then putStrLn "Error: cannot go back in time" >> replLoop rState
                 else do
                     let sState = activeSimState rState
-                        world = simWorld sState
-                        pops = populations world
+                        world  = simWorld sState
+                        pops   = populations world
+                        cns    = census world
                     if null pops
                         then putStrLn "Error: Create a population first!" >> replLoop rState
                         else do
@@ -127,7 +129,7 @@ replLoop rState = do
                             let simAction = runWorldMultipleYears steps
                                 (_, finalState) = runState simAction sState
                                 finalWorld = simWorld finalState
-                            mapM_ (printPopulationReport ("Year " ++ show (currentYear finalWorld))) (populations finalWorld)
+                            mapM_ (printPopulationReport ("Year " ++ show (currentYear finalWorld)) cns) (populations finalWorld)
                             replLoop rState{activeSimState = finalState}
         "list" : _ -> do
             let sState = activeSimState rState
@@ -148,14 +150,14 @@ replLoop rState = do
             case examineType of
                 "person" -> do
                     let sState = activeSimState rState
-                        world = simWorld sState
-                        allPeople = concatMap (\pop -> people pop ++ deceased pop) (populations world)
-                        pId = read examinee :: PersonId
-                        person = findPerson pId allPeople
+                        world  = simWorld sState
+                        cns    = census world
+                        pId    = read examinee :: PersonId
+                        person = Map.lookup pId cns
                     case person of
                         Nothing -> putStrLn ("Person with ID " ++ examinee ++ " does not exist!")
                         Just p -> do
-                            let parents = mapMaybe (`findPerson` allPeople) (parentIds p)
+                            let parents = mapMaybe (\pid -> Map.lookup pid cns) (parentIds p)
                             putBar
                             putStrLn $ personName p
                             putLine
@@ -165,20 +167,19 @@ replLoop rState = do
                             putBar
                 "population" -> do
                     let sState = activeSimState rState
-                        world = simWorld sState
-                        pop = findNamedPopulation examinee (populations world)
+                        world  = simWorld sState
+                        pop    = findNamedPopulation examinee (populations world)
+                        cns    = census world
                     case pop of
                         Nothing -> putStrLn ("Population " ++ examinee ++ " does not exist!")
-                        Just p -> do
-                            printPopulationReport ("Year " ++ show (currentYear world)) p
+                        Just p  -> printPopulationReport ("Year " ++ show (currentYear world)) cns p
                 "year" -> do
-                    let year = read examinee :: Year
+                    let year   = read examinee :: Year
                         sState = activeSimState rState
-                        world = simWorld sState
+                        world  = simWorld sState
                     case getBundleByYear year world of
-                        Nothing -> putStrLn ("No data for year " ++ examinee)
-                        Just bundle -> do
-                            printBundleReport bundle
+                        Nothing     -> putStrLn ("No data for year " ++ examinee)
+                        Just bundle -> printBundleReport bundle
                 _ -> do
                     putStrLn ("Unknown examination type: " ++ examineType)
             replLoop rState
@@ -217,12 +218,20 @@ generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
     males <- replicateM maleCount (createStartingPerson Male)
     females <- replicateM femaleCount (createStartingPerson Female)
 
+    sState <- get
+    let world = simWorld sState
+        cns   = census world
+        updatedCensus = foldr (\p m -> Map.insert (personId p) p m) cns (males ++ females)
+        newWorld = world { census = updatedCensus }
+        newSState = sState { simWorld = newWorld }
+    put newSState
+
     return
         Population
             { popName = name
             , baseBirthRate = birthRatio
             , baseMortalityRate = mortalityRatio
-            , people = males ++ females
+            , people = map personId males ++ map personId females
             , deceased = []
             , discoveries = []
             }
@@ -243,12 +252,12 @@ generateInitialPopulation name popCount sexRatio birthRatio mortalityRatio = do
                 }
 
 -- Print a visual representation of the population
-printPopulationReport :: String -> Population -> IO ()
-printPopulationReport label pop = do
+printPopulationReport :: String -> Census -> Population -> IO ()
+printPopulationReport label cns pop = do
     let ages = [minBound .. maxBound] :: [AgeGroup]
         sexes = [minBound .. maxBound] :: [Sex]
-        ageCounts = map (\ag -> (ag, length [p | p <- people pop, ageGroup p == ag])) ages
-        sexCounts = map (\thisSex -> (thisSex, length [p | p <- people pop, sex p == thisSex])) sexes
+        ageCounts = map (\ag -> (ag, length [p | p <- getPeople cns pop, ageGroup p == ag])) ages
+        sexCounts = map (\thisSex -> (thisSex, length [p | p <- getPeople cns pop, sex p == thisSex])) sexes
 
     putBar
     putStrLn $ label ++ " " ++ popName pop
