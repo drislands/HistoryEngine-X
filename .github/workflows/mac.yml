@@ -1,0 +1,45 @@
+name: Mac Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch: 
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build on Mac
+    runs-on: macos-latest
+
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+
+    - name: Set up Haskell
+      uses: haskell-actions/setup@v2
+      with:
+        ghc-version: '9.6' # Change to your preferred GHC version
+        cabal-version: '3.10'
+
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cabal/store
+          dist-newstyle
+        key: ${{ runner.os }}-cabal-${{ hashFiles('**/*.cabal') }}
+
+    - name: Build Executable
+      run: |
+        cabal update
+        cabal build --enable-executable-stripping
+        
+    - name: Upload Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: history-engine-macos
+        path: |
+          dist-newstyle/**/history-engine
