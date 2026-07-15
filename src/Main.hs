@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 module Main where
 
 import Control.Monad (replicateM)
@@ -158,7 +159,7 @@ replLoop rState = do
                     case person of
                         Nothing -> putStrLn ("Person with ID " ++ examinee ++ " does not exist!")
                         Just p -> do
-                            let parents = mapMaybe (\pid -> Map.lookup pid cns) (parentIds p)
+                            let parents = mapMaybe (`Map.lookup` cns) (parentIds p)
                             putBar
                             putStrLn $ personName p
                             putLine
@@ -184,7 +185,7 @@ replLoop rState = do
                 _ -> do
                     putStrLn ("Unknown examination type: " ++ examineType)
             replLoop rState
-                
+
         _ -> do
             putStrLn "Unknown command or invalid arguments."
             help
