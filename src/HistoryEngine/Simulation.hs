@@ -6,7 +6,10 @@ import HistoryEngine.Types
 import Data.Maybe (catMaybes)
 import Data.List (find)
 import Control.Monad.State
-import Control.Monad (forM)
+import Control.Monad (guard,forM)
+import Control.Monad.Trans.Maybe (MaybeT(..), runMaybeT)
+import Control.Monad.Trans (lift)
+import Control.Applicative ((<|>))
 import System.Random (StdGen, randomR)
 import Data.Foldable (foldlM)
 import qualified Data.Map as Map
@@ -119,47 +122,39 @@ generateOffspring birthRate pool = do
 
     let females = [p | p <- pool, sex p == Female && canReproduce p]
         males   = [p | p <- pool, sex p == Male && canReproduce p]
-    maybeBabies <- forM females $ \mom -> do
-        if null males
-            then return Nothing
-            else do
-                birthRoll <- rollDoubleRange (0.0, 1.0)
-                if birthRoll > birthRate
-                    then return Nothing
-                    else do
-                        maybeDad <- findUnrelatedMale mom cns males 5
-                        case maybeDad of
-                            Nothing -> return Nothing
-                            Just dad -> do
-                                newId  <- freshId
-                                newSex <- rollSex
-                                spec   <- calculateSpecialness
-                                return $ Just Person
-                                    { personId = newId
-                                    , personName = "whatever"
-                                    , age  = 0
-                                    , sex  = newSex
-                                    , parentIds = [personId dad,personId mom]
-                                    , specialness = spec
-                                    }
+    maybeBabies <- forM females $ \mom -> runMaybeT $ do
+        -- Fail early if no males
+        guard (not $ null males)
+
+        -- Fail early if no birth
+        birthRoll <- lift $ rollDoubleRange (0.0, 1.0)
+        guard (birthRoll <= birthRate)
+
+
+        dad <- MaybeT $ findUnrelatedMale mom cns males 5
+        newId  <- lift freshId
+        newSex <- lift rollSex
+        spec   <- lift calculateSpecialness
+        return Person
+            { personId = newId
+            , personName = "whatever"
+            , age  = 0
+            , sex  = newSex
+            , parentIds = [personId dad,personId mom]
+            , specialness = spec
+            }
 
     -- Flatten the [Maybe Person] down to [Person]
     return (catMaybes maybeBabies)
 
 findUnrelatedMale :: Person -> Census -> [Person] -> Int -> SimMonad (Maybe Person)
 findUnrelatedMale _ _ [] _ = return Nothing
-findUnrelatedMale mom cns eligibleDads attempts = do
-    maybeUnrelated <- tryRandomUnrelated mom cns eligibleDads attempts
-    case maybeUnrelated of
-        Just dad -> return (Just dad)
-        Nothing -> do
-            -- Fallback 1: Exhaustive search for any unrelated male
-            let unrelatedDad = find (\dad -> areUnrelated (personId mom) (personId dad) cns) eligibleDads
-            case unrelatedDad of
-                Just dad -> return (Just dad)
-                Nothing ->
-                    -- Fallback 2: If absolutely no unrelated males exist, pick any eligible male
-                    Just <$> rollListSelection eligibleDads
+findUnrelatedMale mom cns eligibleDads attempts = runMaybeT $
+    MaybeT (tryRandomUnrelated mom cns eligibleDads attempts)
+    -- Fallback 1: Exhaustive search for any unrelated male
+    <|> MaybeT (return $ find (\dad -> areUnrelated (personId mom) (personId dad) cns) eligibleDads)
+    -- Fallback 2: If absolutely no unrelated males exist, pick any eligible male
+    <|> lift (rollListSelection eligibleDads)
 
 tryRandomUnrelated :: Person -> Census -> [Person] -> Int -> SimMonad (Maybe Person)
 tryRandomUnrelated _ _ [] _ = return Nothing
