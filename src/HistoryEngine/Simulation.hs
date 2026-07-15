@@ -1,8 +1,10 @@
+{-# OPTIONS_GHC -Wno-unused-imports #-}
 module HistoryEngine.Simulation where
 
 import HistoryEngine.Logic
 import HistoryEngine.Types
 import Data.Maybe (catMaybes)
+import Data.List (find)
 import Control.Monad.State
 import Control.Monad (forM)
 import System.Random (StdGen, randomR)
@@ -118,30 +120,56 @@ generateOffspring birthRate pool = do
     let females = [p | p <- pool, sex p == Female && canReproduce p]
         males   = [p | p <- pool, sex p == Male && canReproduce p]
     maybeBabies <- forM females $ \mom -> do
-        let validDads = filter (\m -> areUnrelated (personId mom) (personId m) cns) males
-            dadsPool  = if null validDads then males else validDads
-        if null dadsPool
+        if null males
             then return Nothing
             else do
                 birthRoll <- rollDoubleRange (0.0, 1.0)
                 if birthRoll > birthRate
                     then return Nothing
                     else do
-                        dad    <- rollListSelection dadsPool
-                        newId  <- freshId
-                        newSex <- rollSex
-                        spec   <- calculateSpecialness
-                        return $ Just Person
-                            { personId = newId
-                            , personName = "whatever"
-                            , age  = 0
-                            , sex  = newSex
-                            , parentIds = [personId dad,personId mom]
-                            , specialness = spec
-                            }
+                        maybeDad <- findUnrelatedMale mom cns males 5
+                        case maybeDad of
+                            Nothing -> return Nothing
+                            Just dad -> do
+                                newId  <- freshId
+                                newSex <- rollSex
+                                spec   <- calculateSpecialness
+                                return $ Just Person
+                                    { personId = newId
+                                    , personName = "whatever"
+                                    , age  = 0
+                                    , sex  = newSex
+                                    , parentIds = [personId dad,personId mom]
+                                    , specialness = spec
+                                    }
 
     -- Flatten the [Maybe Person] down to [Person]
     return (catMaybes maybeBabies)
+
+findUnrelatedMale :: Person -> Census -> [Person] -> Int -> SimMonad (Maybe Person)
+findUnrelatedMale _ _ [] _ = return Nothing
+findUnrelatedMale mom cns eligibleDads attempts = do
+    maybeUnrelated <- tryRandomUnrelated mom cns eligibleDads attempts
+    case maybeUnrelated of
+        Just dad -> return (Just dad)
+        Nothing -> do
+            -- Fallback 1: Exhaustive search for any unrelated male
+            let unrelatedDad = find (\dad -> areUnrelated (personId mom) (personId dad) cns) eligibleDads
+            case unrelatedDad of
+                Just dad -> return (Just dad)
+                Nothing ->
+                    -- Fallback 2: If absolutely no unrelated males exist, pick any eligible male
+                    Just <$> rollListSelection eligibleDads
+
+tryRandomUnrelated :: Person -> Census -> [Person] -> Int -> SimMonad (Maybe Person)
+tryRandomUnrelated _ _ [] _ = return Nothing
+tryRandomUnrelated mom cns eligibleDads attempts
+    | attempts <= 0 = return Nothing
+    | otherwise = do
+        candidate <- rollListSelection eligibleDads
+        if areUnrelated (personId mom) (personId candidate) cns
+            then return (Just candidate)
+            else tryRandomUnrelated mom cns eligibleDads (attempts - 1)
 
 calculateSpecialness :: SimMonad Int
 calculateSpecialness = do
